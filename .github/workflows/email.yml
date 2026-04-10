@@ -1,0 +1,78 @@
+name: SSC ASO Salary Email - Daily Motivation
+
+on:
+  schedule:
+    # Runs every day at 8:00 AM IST (2:30 AM UTC)
+    - cron: '30 2 * * *'
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode (send to test email)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  send-email:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: 📦 Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install openai requests python-dotenv
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: 🖼️ Create image directory (if needed)
+      run: |
+        mkdir -p images
+        # Create a placeholder image if image.jpg doesn't exist
+        if [ ! -f image.jpg ]; then
+          echo "Creating placeholder image..."
+          python -c "from PIL import Image; Image.new('RGB', (600, 400), color='#FF9933').save('image.jpg')" 2>/dev/null || echo "Image not found, continuing without image"
+        fi
+    
+    - name: 🤖 Generate and Send SSC ASO Email with DeepSeek R1
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        TO_EMAIL: ${{ secrets.TO_EMAIL }}
+        TEST_MODE: ${{ github.event.inputs.test_mode }}
+      run: |
+        if [ "$TEST_MODE" = "true" ]; then
+          echo "🧪 Running in TEST MODE - sending to test email"
+          python main.py --test
+        else
+          echo "🚀 Running in PRODUCTION MODE"
+          python main.py
+        fi
+    
+    - name: 📧 Email Status
+      if: always()
+      run: |
+        echo "✅ Workflow completed at $(date)"
+        echo "📊 Status: ${{ job.status }}"
+    
+    - name: 💾 Save generated email (for debugging)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: email-debug
+        path: |
+          *.html
+          *.log
+        retention-days: 7
